@@ -1,0 +1,7 @@
+interface:
+  display_name: "Pangram Audit"
+  short_description: "Audit detector results and authorship evidence"
+  default_prompt: "Use $pangram-audit to interpret this Pangram result or evaluate a labeled detector benchmark without treating the score as proof of authorship."
+
+policy:
+  allow_implicit_invocation: true
