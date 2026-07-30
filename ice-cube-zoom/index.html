@@ -1,0 +1,803 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descent into Ice — nine orders of magnitude</title>
+<style>
+  :root{
+    --abyss:#04080D;
+    --panel:rgba(11,20,29,.78);
+    --frost:#D7ECF6;
+    --melt:#5FB8E0;
+    --hoar:#7C93A4;
+    --glare:#F2FAFE;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"Avenir Next","Helvetica Neue","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--abyss);
+    color:var(--frost);
+    font-family:var(--sans);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  .hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
+  .hud > *{pointer-events:none}
+  .hud .row{display:flex;justify-content:space-between;align-items:flex-start;padding:28px 32px;gap:24px}
+  .hud .row.bottom{align-items:flex-end;padding-bottom:24px}
+
+  .eyebrow{
+    font-family:var(--mono);font-size:10px;letter-spacing:.22em;
+    color:var(--hoar);text-transform:uppercase;margin-bottom:8px;
+  }
+  h1{
+    font-weight:200;font-size:clamp(22px,3.2vw,34px);letter-spacing:.045em;
+    color:var(--glare);text-wrap:balance;line-height:1.1;
+  }
+  h1 em{font-style:normal;color:var(--melt)}
+
+  .readout{
+    text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  }
+  .readout .k{font-size:10px;letter-spacing:.22em;color:var(--hoar)}
+  .readout .v{font-size:clamp(15px,1.8vw,20px);color:var(--frost);margin-bottom:10px}
+  .readout .v sup{font-size:.62em}
+
+  .level{max-width:min(520px,72vw)}
+  .level .num{
+    font-family:var(--mono);font-variant-numeric:tabular-nums;
+    font-size:clamp(34px,5vw,56px);font-weight:300;line-height:1;
+    color:var(--glare);letter-spacing:-.01em;
+  }
+  .level .num span{color:var(--hoar);font-size:.5em}
+  .level .name{
+    font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--melt);margin:10px 0 6px;
+  }
+  .level .desc{
+    font-size:13.5px;line-height:1.55;color:var(--hoar);max-width:46ch;
+  }
+
+  .scalebar{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .scalebar .bar{
+    width:132px;height:8px;margin-left:auto;margin-bottom:7px;position:relative;
+    border-left:1px solid var(--frost);border-right:1px solid var(--frost);
+  }
+  .scalebar .bar::after{
+    content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--frost);
+  }
+  .scalebar .lbl{font-size:11px;letter-spacing:.08em;color:var(--frost)}
+  .scalebar .sub{font-size:9.5px;letter-spacing:.18em;color:var(--hoar);margin-top:4px;text-transform:uppercase}
+
+  .rail-wrap{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:14px;pointer-events:auto;
+    background:var(--panel);border:1px solid rgba(95,184,224,.16);
+    border-radius:2px;padding:10px 16px;backdrop-filter:blur(10px);
+  }
+  #play{
+    pointer-events:auto;cursor:pointer;background:none;border:1px solid rgba(95,184,224,.35);
+    color:var(--frost);width:30px;height:30px;border-radius:2px;font-size:11px;
+    display:grid;place-items:center;font-family:var(--mono);flex:none;
+  }
+  #play:hover{border-color:var(--melt);color:var(--glare)}
+  #play:focus-visible,.tick:focus-visible{outline:2px solid var(--melt);outline-offset:2px}
+  #rail{
+    position:relative;width:min(360px,42vw);height:30px;cursor:pointer;touch-action:none;
+  }
+  #rail .track{position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(124,147,164,.4)}
+  #rail .fill{position:absolute;left:0;top:50%;height:1px;background:var(--melt);width:0;box-shadow:0 0 8px rgba(95,184,224,.7)}
+  .tick{
+    position:absolute;top:50%;width:12px;height:12px;transform:translate(-50%,-50%);
+    background:none;border:none;cursor:pointer;padding:0;
+  }
+  .tick::after{
+    content:"";position:absolute;inset:3px;background:rgba(124,147,164,.55);
+    transform:rotate(45deg);transition:background .25s,box-shadow .25s;
+  }
+  .tick.on::after{background:var(--melt);box-shadow:0 0 7px rgba(95,184,224,.9)}
+  #cursor{
+    position:absolute;top:50%;width:3px;height:14px;transform:translate(-50%,-50%);
+    background:var(--glare);box-shadow:0 0 9px rgba(242,250,254,.8);
+  }
+
+  #hint{
+    position:fixed;left:50%;bottom:76px;transform:translateX(-50%);
+    font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--hoar);
+    text-transform:uppercase;transition:opacity 1.2s;white-space:nowrap;
+  }
+  #hint.gone{opacity:0}
+  #hint b{color:var(--frost);font-weight:400}
+
+  #nogl{
+    position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:32px;
+  }
+  #nogl p{max-width:44ch;line-height:1.6;color:var(--hoar);font-size:14px}
+
+  .fade{transition:opacity .45s}
+  .fading{opacity:0}
+
+  @media (max-width:640px){
+    .hud .row{padding:18px 18px}
+    .level .desc{display:none}
+    .scalebar .sub{display:none}
+    #hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .fade{transition:none}
+  }
+</style>
+
+<canvas id="gl" aria-hidden="true"></canvas>
+
+<div class="hud" aria-live="polite">
+  <div class="row">
+    <div>
+      <div class="eyebrow">Specimen 01 · H₂O · solid phase · 263 K</div>
+      <h1>Descent <em>into ice</em></h1>
+    </div>
+    <div class="readout">
+      <div class="k">MAG</div>
+      <div class="v" id="mag">×1</div>
+      <div class="k">DEPTH</div>
+      <div class="v" id="depth">1 / 9</div>
+    </div>
+  </div>
+  <div class="row bottom">
+    <div class="level">
+      <div class="num fade" id="lvlnum">01<span> / 09</span></div>
+      <div class="name fade" id="lvlname"></div>
+      <div class="desc fade" id="lvldesc"></div>
+    </div>
+    <div class="scalebar">
+      <div class="bar"></div>
+      <div class="lbl" id="field">10 cm</div>
+      <div class="sub">field of view</div>
+    </div>
+  </div>
+</div>
+
+<div id="hint"><b>space</b> pause · <b>← →</b> jump · <b>drag</b> scrub</div>
+
+<div class="rail-wrap">
+  <button id="play" aria-label="Pause">❚❚</button>
+  <div id="rail" role="slider" aria-label="Depth" aria-valuemin="1" aria-valuemax="9" aria-valuenow="1" tabindex="0">
+    <div class="track"></div>
+    <div class="fill" id="fill"></div>
+    <div id="cursor"></div>
+  </div>
+</div>
+
+<div id="nogl"><p>This piece needs WebGL to render. Your browser reported that WebGL is unavailable — try a desktop browser with hardware acceleration enabled.</p></div>
+
+<script>
+'use strict';
+
+/* ---------------- level data ---------------- */
+const LEVELS = [
+  { name:'The cube',       desc:'Frozen tap water under studio light. Forty millimetres of clouded glass on a cold black table.' },
+  { name:'Frost skin',     desc:'The surface sublimates as it sits — hoarfrost ridges etch the faces, catching the key light.' },
+  { name:'Trapped air',    desc:'Air forced out of solution by the advancing freezing front, walled in as a constellation of bubbles.' },
+  { name:'One bubble',     desc:'A single pocket of room air, sealed in glass-clear ice the moment the water set.' },
+  { name:'Grain mosaic',   desc:'Not one crystal but many — grains that nucleated separately, meeting at frozen boundaries.' },
+  { name:'The lattice',    desc:'Order surfaces. Every molecule holds its assigned place in hexagonal registry — ice Ih.' },
+  { name:'Hydrogen bonds', desc:'Each molecule grips four neighbours — the open tetrahedral net that makes ice float on water.' },
+  { name:'One molecule',   desc:'An oxygen and two hydrogens, the bond arms bent at 104.5 degrees.' },
+  { name:'The atom',       desc:'Oxygen’s electron cloud — and somewhere inside, a nucleus fifty thousand times smaller still.' },
+];
+const ZMAX = 8;                    // uZ ∈ [0,8] → 9 levels
+const TOTAL_DECADES = 9;           // ×1 → ×10⁹, 10 cm → ~0.1 nm
+const RATE = 0.115;                // levels per second in autoplay
+
+/* ---------------- shaders ---------------- */
+const VS = `attribute vec2 aP; void main(){ gl_Position = vec4(aP,0.,1.); }`;
+
+const FS = `
+precision highp float;
+uniform vec2 uRes; uniform float uT; uniform float uZ;
+
+const float PI = 3.14159265;
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+float hash1(vec3 p){ p=fract(p*0.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float hash12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
+vec2 hash22(vec2 p){ vec3 p3=fract(vec3(p.xyx)*vec3(.1031,.1030,.0973)); p3+=dot(p3,p3.yzx+33.33); return fract((p3.xx+p3.yz)*p3.zy); }
+float noise3(vec3 x){
+  vec3 i=floor(x), f=fract(x); f=f*f*(3.-2.*f);
+  return mix(mix(mix(hash1(i),             hash1(i+vec3(1,0,0)),f.x),
+                 mix(hash1(i+vec3(0,1,0)), hash1(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(hash1(i+vec3(0,0,1)), hash1(i+vec3(1,0,1)),f.x),
+                 mix(hash1(i+vec3(0,1,1)), hash1(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm(vec3 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=a*noise3(p); p=p*2.03+vec3(1.7); a*=.5; } return s; }
+float ridge(vec3 p){ float a=.55,s=0.; for(int i=0;i<5;i++){ s+=a*abs(2.*noise3(p)-1.); p*=2.13; a*=.5; } return s; }
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.,1.); }
+float smin(float a,float b,float k){ float h=clamp(.5+.5*(b-a)/k,0.,1.); return mix(b,a,h)-k*h*(1.-h); }
+float sdSeg(vec3 p, vec3 a, vec3 b){ vec3 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.); return length(pa-ba*h); }
+
+/* studio environment for the macro shots */
+vec3 skyEnv(vec3 d){
+  vec3 c = mix(vec3(0.014,0.020,0.030), vec3(0.10,0.14,0.19), smoothstep(-0.4,0.8,d.y));
+  vec3 L1 = normalize(vec3(1.6,2.4,1.2));
+  c += vec3(1.0,0.97,0.90)*3.5*pow(max(dot(d,L1),0.),60.);
+  c += vec3(1.0,0.97,0.90)*0.55*pow(max(dot(d,L1),0.),8.);
+  c += vec3(0.35,0.60,0.90)*0.85*pow(max(dot(d,normalize(vec3(-1.8,0.8,-1.2))),0.),12.);
+  return c;
+}
+
+/* ============ L1 · the cube (10 cm) ============ */
+float sdRB(vec3 p, vec3 b, float r){ vec3 q=abs(p)-b; return length(max(q,0.))+min(max(q.x,max(q.y,q.z)),0.)-r; }
+float map0(vec3 p){
+  float d = sdRB(p, vec3(0.88), 0.10);
+  d += 0.013*fbm(p*5.0) - 0.0065;
+  return d*0.9;
+}
+vec3 nor0(vec3 p){
+  vec2 e=vec2(0.002,0.);
+  return normalize(vec3(map0(p+e.xyy)-map0(p-e.xyy), map0(p+e.yxy)-map0(p-e.yxy), map0(p+e.yyx)-map0(p-e.yyx)));
+}
+vec3 scene0(vec2 uv, float zm, float t){
+  float dist = 1.45 + 4.7/zm;
+  float ang  = 0.55 + 0.05*sin(t*0.09);
+  vec3 ro = vec3(sin(ang)*dist, 0.62 + 0.55/zm, cos(ang)*dist);
+  vec3 la = vec3(0., -0.08, 0.);
+  vec3 fw = normalize(la-ro), rt = normalize(cross(fw, vec3(0,1,0))), up = cross(rt,fw);
+  vec3 rd = normalize(uv.x*rt + uv.y*up + 1.9*fw);
+
+  float tf = (rd.y<0.) ? (-0.99-ro.y)/rd.y : 1e5;
+  float tHit=-1., th=0.;
+  for(int i=0;i<80;i++){
+    vec3 p=ro+rd*th; float d=map0(p);
+    if(d<0.0016){ tHit=th; break; }
+    th+=d; if(th>20.) break;
+  }
+  vec3 col;
+  if(tHit>0. && tHit<tf){
+    vec3 p=ro+rd*tHit; vec3 n=nor0(p);
+    float F = mix(0.04, 1.0, pow(1.-max(dot(n,-rd),0.),5.));
+    vec3 refl = skyEnv(reflect(rd,n));
+    vec3 rr = refract(rd,n,0.752); if(dot(rr,rr)<0.25) rr = reflect(rd,n);
+    float den=0.; vec3 ip=p+rr*0.06;
+    for(int i=0;i<12;i++){
+      den += fbm(ip*2.6)*0.10 + smoothstep(0.62,0.9,noise3(ip*9.0))*0.13;
+      ip += rr*0.15;
+      if(sdRB(ip,vec3(0.88),0.10)>0.03) break;
+    }
+    den = clamp(den,0.,1.);
+    vec3 inter = mix(vec3(0.05,0.13,0.21), vec3(0.75,0.87,0.95), den*den*1.25);
+    inter += skyEnv(rr)*0.16;
+    col = mix(inter, refl, F);
+    vec3 L1=normalize(vec3(1.6,2.4,1.2));
+    col += vec3(1.,0.98,0.92)*pow(max(dot(n,normalize(L1-rd)),0.),140.)*2.6;
+    vec3 L2=normalize(vec3(-1.8,0.8,-1.2));
+    col += vec3(0.5,0.75,1.)*pow(max(dot(n,normalize(L2-rd)),0.),60.)*0.8;
+  } else if(tf<1e4){
+    vec3 fp=ro+rd*tf;
+    float r=length(fp.xz);
+    col = mix(vec3(0.035,0.050,0.066), vec3(0.010,0.016,0.024), smoothstep(0.,6.,r));
+    col += vec3(0.10,0.16,0.22)*exp(-0.4*r*r)*0.55;
+    float sh = smoothstep(1.9,1.02,max(abs(fp.x),abs(fp.z)));
+    col *= 1.-0.72*sh;
+    col += skyEnv(reflect(rd,vec3(0,1,0)))*0.07;
+  } else col = skyEnv(rd);
+  return col;
+}
+
+/* ============ L2 · frost skin (1 cm) ============ */
+vec3 scene1(vec2 uv, float zm, float t){
+  vec2 q = rot(0.42)*uv*(3.1/zm) + vec2(12.7, 4.2);
+  float e = 0.045/zm;
+  float h  = ridge(vec3(q,3.7));
+  float hx = ridge(vec3(q+vec2(e,0.),3.7));
+  float hy = ridge(vec3(q+vec2(0.,e),3.7));
+  vec3 n = normalize(vec3(-(hx-h), -(hy-h), e*2.4));
+  vec3 L = normalize(vec3(0.6,0.38,0.42));
+  float dif = max(dot(n,L),0.);
+  float spe = pow(max(dot(n,normalize(L+vec3(0.,0.,1.))),0.), 26.);
+  vec3 col = mix(vec3(0.06,0.12,0.19), vec3(0.72,0.84,0.92), smoothstep(0.15,1.05,h));
+  col *= 0.35 + 0.75*dif;
+  col += vec3(0.9,0.96,1.0)*spe*0.9;
+  float v = fbm(vec3(q*0.55, 8.1));
+  col = mix(col, vec3(0.02,0.06,0.11), smoothstep(0.035,0.0,abs(v-0.5))*0.75);
+  float fine = noise3(vec3(q*14.0, 2.2));
+  col *= 0.86 + 0.28*fine;
+  vec2 gq = floor(q*34.0);
+  vec2 gf = fract(q*34.0)-0.5;
+  float g = step(0.982, hash12(gq)) * smoothstep(0.34,0.05,length(gf));
+  col += vec3(1.0,0.98,0.94) * g * (0.3+0.7*dif) * (0.4+0.6*sin(t*2.6+hash12(gq)*40.0)) * 2.2;
+  return col;
+}
+
+/* ============ L3 · trapped air (1 mm) ============ */
+float map2(vec3 p){
+  vec3 id=floor(p); vec3 f=p-id-0.5;
+  if(hash1(id+53.7)<0.42) return 0.5-max(abs(f.x),max(abs(f.y),abs(f.z)))+0.05;
+  float r=0.09+0.19*hash1(id+41.2);
+  float w=0.5-r-0.05;
+  vec3 j=(vec3(hash1(id+3.1),hash1(id+17.7),hash1(id+29.3))-0.5)*2.0*w;
+  return length(f-j)-r;
+}
+vec3 scene2(vec2 uv, float zm, float t){
+  vec3 ro = vec3(3.7, 11.2, -6.4/zm);
+  vec3 rd = normalize(vec3(uv, 1.65));
+  rd.xy = rot(0.18)*rd.xy; rd.xz = rot(0.1*sin(t*0.07))*rd.xz;
+  vec3 bg = mix(vec3(0.012,0.030,0.050), vec3(0.045,0.10,0.155), 0.5+0.5*rd.y);
+  float th=0., tHit=-1.;
+  bool inside = map2(ro)<0.02;
+  for(int i=0;i<64;i++){
+    float d=map2(ro+rd*th);
+    if(inside){ if(d>0.05) inside=false; th+=0.04; continue; }
+    if(d<0.002){ tHit=th; break; }
+    th+=d*0.9; if(th>16.) break;
+  }
+  vec3 col=bg;
+  if(tHit>0.){
+    vec3 p=ro+rd*tHit;
+    vec2 e=vec2(0.004,0.);
+    vec3 n=normalize(vec3(map2(p+e.xyy)-map2(p-e.xyy), map2(p+e.yxy)-map2(p-e.yxy), map2(p+e.yyx)-map2(p-e.yyx)));
+    float F=pow(1.-abs(dot(n,rd)),2.6);
+    col = mix(vec3(0.03,0.09,0.15), vec3(0.72,0.86,0.95), F);
+    vec3 L=normalize(vec3(0.8,1.0,-0.5));
+    col += vec3(1.,0.98,0.93)*pow(max(dot(n,normalize(L-rd)),0.),90.)*1.8;
+    col += vec3(0.35,0.6,0.85)*pow(max(dot(n,normalize(vec3(-0.7,-0.3,0.6)-rd)),0.),40.)*0.5;
+    col = mix(col, bg, 1.-exp(-0.10*tHit));
+  }
+  col += vec3(0.05,0.12,0.18)*fbm(vec3(uv*2.0, t*0.05))*0.35;
+  return col;
+}
+
+/* ============ L4 · one bubble (100 µm) ============ */
+vec3 scene3(vec2 uv, float zm, float t){
+  float dist = 8.6/zm;
+  vec3 ro = vec3(0., 0., -dist);
+  vec3 rd = normalize(vec3(uv, 1.7));
+  rd.xy = rot(0.06*sin(t*0.11))*rd.xy;
+  vec3 bg = mix(vec3(0.010,0.026,0.044), vec3(0.040,0.095,0.150), 0.5+0.5*rd.y);
+  float fil = ridge(vec3(uv*1.6 + vec2(0., t*0.01), 5.3));
+  bg += vec3(0.06,0.14,0.21)*smoothstep(0.75,1.05,fil)*0.8;
+  float R = 1.12 + 0.012*sin(t*0.9) ;
+  float b = dot(ro,rd);
+  float c2 = dot(ro,ro)-R*R;
+  float disc = b*b-c2;
+  vec3 col = bg;
+  if(disc>0.){
+    float tHit = -b-sqrt(disc);
+    if(tHit>0.){
+      vec3 p=ro+rd*tHit; vec3 n=normalize(p);
+      float F=pow(1.-abs(dot(n,rd)), 2.2);
+      vec3 rr=refract(rd,n,0.9);
+      vec3 inner = mix(vec3(0.020,0.052,0.085), vec3(0.10,0.20,0.30), 0.5+0.5*rr.y);
+      inner += vec3(0.05,0.11,0.17)*fbm(rr*2.2 + p*0.7);
+      inner += vec3(0.10,0.19,0.27)*smoothstep(0.55,0.95, fbm(p*3.2 + rr*1.4))*0.9;
+      inner *= 0.75 + 0.35*noise3(p*5.5);
+      col = mix(inner, vec3(0.70,0.85,0.94), F*0.9);
+      vec3 L=normalize(vec3(0.9,1.1,-0.6));
+      col += vec3(1.,0.99,0.95)*pow(max(dot(n,normalize(L-rd)),0.),160.)*2.4;
+      col += vec3(0.45,0.72,0.95)*pow(1.-abs(dot(n,rd)),6.)*1.2;
+      col = mix(col, bg, smoothstep(6.,14.,tHit));
+    }
+  }
+  /* companion micro-bubbles for scale */
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    vec2 bp = vec2(sin(fi*2.7+1.3), cos(fi*1.9+0.6))*(1.15+fi*0.28);
+    float br = 0.05+0.03*fi;
+    float dd = length(uv - bp*(2.2/dist));
+    float m = smoothstep(br, br*0.55, dd);
+    col = mix(col, vec3(0.30,0.48,0.62), m*0.55);
+    col += vec3(0.8,0.9,0.97)*smoothstep(br*0.6,br*0.2,abs(dd-br*0.75))*m*0.4;
+  }
+  return col;
+}
+
+/* ============ L5 · grain mosaic (10 µm) ============ */
+vec3 vor(vec2 q){
+  vec2 g=floor(q), f=q-g; float F1=8.,F2=8.; vec2 idv=g;
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+    vec2 o=vec2(float(x),float(y));
+    vec2 r=hash22(g+o);
+    vec2 d=o+r-f; float dd=dot(d,d);
+    if(dd<F1){ F2=F1; F1=dd; idv=g+o; } else if(dd<F2){ F2=dd; }
+  }
+  return vec3(sqrt(F1), sqrt(F2), hash12(idv));
+}
+vec3 scene4(vec2 uv, float zm, float t){
+  vec2 q = rot(-0.3)*uv*(6.2/zm) + vec2(3.1, 9.4);
+  vec3 v = vor(q);
+  float id = v.z;
+  vec3 cA=vec3(0.055,0.145,0.215), cB=vec3(0.095,0.250,0.330), cC=vec3(0.155,0.360,0.430), cD=vec3(0.400,0.345,0.250);
+  vec3 col = mix(cA,cB, smoothstep(0.15,0.45,id));
+  col = mix(col,cC, smoothstep(0.5,0.8,id));
+  col = mix(col,cD, smoothstep(0.93,0.975,id));
+  /* lamellae — parallel deformation bands, one orientation per grain */
+  float lang = id*31.4;
+  vec2 ldir = vec2(cos(lang), sin(lang));
+  float lam = sin(dot(q,ldir)*22.0 + id*17.0);
+  col *= 0.92 + 0.10*lam*smoothstep(0.3,0.7,hash12(vec2(id*91.7,3.1)));
+  col *= 0.84 + 0.32*fbm(vec3(q*2.6, id*7.3));
+  col *= 0.90 + 0.20*sin(t*0.25 + id*6.28);
+  float e=v.y-v.x;
+  col = mix(vec3(0.012,0.035,0.058), col, smoothstep(0.006,0.045,e));
+  col += vec3(0.45,0.68,0.80)*smoothstep(0.09,0.045,e)*smoothstep(0.012,0.045,e)*0.30;
+  col += vec3(0.65,0.82,0.92)*smoothstep(0.35,0.0,v.x)*0.05;
+  return col;
+}
+
+/* ============ L6 · the lattice (100 nm) ============ */
+float hexDist(vec2 p){ p=abs(p); return max(dot(p,normalize(vec2(1.,1.73))), p.x); }
+vec4 hexCoord(vec2 q){
+  vec2 r=vec2(1.,1.73), h=r*.5;
+  vec2 a=mod(q,r)-h, b=mod(q-h,r)-h;
+  vec2 gv = dot(a,a)<dot(b,b) ? a : b;
+  return vec4(gv, q-gv);
+}
+vec3 scene5(vec2 uv, float zm, float t){
+  vec3 col = mix(vec3(0.008,0.020,0.036), vec3(0.030,0.075,0.120), 0.5+0.5*uv.y);
+  for(int i=0;i<5;i++){
+    float di=float(i);
+    float sc = (1.9 + di*1.55)/zm;
+    vec2 q = rot(0.13*di + t*0.018) * uv * sc + vec2(di*7.31, di*2.97);
+    vec4 hc = hexCoord(q);
+    float ed = abs(hexDist(hc.xy)-0.5);
+    float edge = smoothstep(0.055,0.012,ed);
+    float dotc = exp(-26.*dot(hc.xy,hc.xy));
+    float w = 1.0/(1.0+di*di*0.55);
+    float tw = 0.7+0.3*sin(t*0.8 + hash12(hc.zw)*6.28 + di);
+    col += vec3(0.16,0.38,0.52)*edge*0.30*w;
+    col += vec3(0.62,0.86,0.98)*dotc*0.85*w*tw;
+  }
+  col += vec3(0.04,0.10,0.16)*fbm(vec3(uv*1.5, t*0.04))*0.4;
+  return col;
+}
+
+/* ============ L7 · hydrogen bonds (1 nm) ============ */
+float map6(vec3 p, out float m){
+  vec3 q1=fract(p+0.5)-0.5; float d1=length(q1)-0.165;
+  vec3 q2=fract(p)-0.5;     float d2=length(q2)-0.165;
+  vec3 s=fract(p); s=min(s,1.-s);
+  float d3=sdSeg(s, vec3(0.), vec3(0.5)) - 0.032;
+  m = (d3<min(d1,d2)) ? 1. : 0.;
+  return min(d3, min(d1,d2));
+}
+vec3 scene6(vec2 uv, float zm, float t){
+  float dist = 4.6/zm;
+  vec3 ro = vec3(0.28, 0.34, -dist);
+  vec3 rd = normalize(vec3(uv, 1.7));
+  float a = t*0.05;
+  ro.xz=rot(a)*ro.xz; rd.xz=rot(a)*rd.xz;
+  rd.yz=rot(0.12)*rd.yz;
+  vec3 bg = mix(vec3(0.008,0.020,0.035), vec3(0.028,0.070,0.112), 0.5+0.5*rd.y);
+  float th=0., tHit=-1., m=0., mh=0.;
+  bool inside = map6(ro, m)<0.02;
+  for(int i=0;i<72;i++){
+    float d=map6(ro+rd*th, m);
+    if(inside){ if(d>0.05) inside=false; th+=0.035; continue; }
+    if(d<0.0022){ tHit=th; mh=m; break; }
+    th+=d*0.92; if(th>13.) break;
+  }
+  vec3 col=bg;
+  if(tHit>0.){
+    vec3 p=ro+rd*tHit; vec2 e=vec2(0.004,0.); float dm;
+    vec3 n=normalize(vec3(map6(p+e.xyy,dm)-map6(p-e.xyy,dm), map6(p+e.yxy,dm)-map6(p-e.yxy,dm), map6(p+e.yyx,dm)-map6(p-e.yyx,dm)));
+    float F=pow(1.-abs(dot(n,rd)),3.);
+    vec3 L=normalize(vec3(0.7,1.0,-0.6));
+    float dif=max(dot(n,L),0.);
+    if(mh<0.5){
+      col = mix(vec3(0.07,0.15,0.22), vec3(0.80,0.90,0.96), 0.25+0.5*dif+0.5*F);
+      col += vec3(1.,0.98,0.94)*pow(max(dot(n,normalize(L-rd)),0.),80.)*1.4;
+    } else {
+      col = mix(vec3(0.05,0.14,0.21), vec3(0.30,0.62,0.82), 0.3+0.7*F) * (0.5+0.6*dif);
+    }
+    col = mix(col, bg, 1.-exp(-0.16*tHit));
+  }
+  return col;
+}
+
+/* ============ L8 · one molecule (300 pm) ============ */
+float map7(vec3 p, out float m){
+  float dO = length(p)-0.62;
+  float dH1 = length(p-vec3( 0.83,0.62,0.))-0.335;
+  float dH2 = length(p-vec3(-0.83,0.62,0.))-0.335;
+  float dH = min(dH1,dH2);
+  m = (dH<dO) ? 1. : 0.;
+  return smin(dO, dH, 0.06);
+}
+vec3 scene7(vec2 uv, float zm, float t){
+  float dist = 5.1/zm;
+  vec3 ro = vec3(0., 0.28, -dist);
+  vec3 rd = normalize(vec3(uv, 1.75));
+  float a = t*0.22;
+  ro.xz=rot(a)*ro.xz; rd.xz=rot(a)*rd.xz;
+  vec3 bg = mix(vec3(0.008,0.018,0.032), vec3(0.026,0.062,0.100), smoothstep(-1.,1.,rd.y));
+  bg += vec3(0.03,0.08,0.13)*exp(-dot(uv,uv)*1.4);
+  float th=0., tHit=-1., m=0., mh=0.;
+  for(int i=0;i<72;i++){
+    float d=map7(ro+rd*th, m);
+    if(d<0.002){ tHit=th; mh=m; break; }
+    th+=d; if(th>40.) break;
+  }
+  vec3 col=bg;
+  if(tHit>0.){
+    vec3 p=ro+rd*tHit; vec2 e=vec2(0.003,0.); float dm;
+    vec3 n=normalize(vec3(map7(p+e.xyy,dm)-map7(p-e.xyy,dm), map7(p+e.yxy,dm)-map7(p-e.yxy,dm), map7(p+e.yyx,dm)-map7(p-e.yyx,dm)));
+    float F=pow(1.-abs(dot(n,rd)),3.4);
+    vec3 L=normalize(vec3(0.9,1.2,-0.7));
+    float dif=max(dot(n,L),0.);
+    vec3 base = (mh<0.5) ? vec3(0.30,0.55,0.68) : vec3(0.78,0.88,0.93);
+    col = base*(0.22+0.85*dif);
+    col += vec3(0.55,0.80,0.95)*F*0.9;
+    col += vec3(1.,0.99,0.95)*pow(max(dot(n,normalize(L-rd)),0.),110.)*2.2;
+    col += vec3(0.30,0.55,0.80)*pow(max(dot(n,normalize(vec3(-0.8,-0.2,0.5)-rd)),0.),30.)*0.5;
+  }
+  return col;
+}
+
+/* ============ L9 · the atom (100 pm) ============ */
+vec3 scene8(vec2 uv, float zm, float t){
+  float dist = 6.4/zm;
+  vec3 ro = vec3(0.,0.,-dist);
+  vec3 rd = normalize(vec3(uv, 1.75));
+  float a=t*0.05;
+  ro.xz=rot(a)*ro.xz; rd.xz=rot(a)*rd.xz;
+  vec3 col = mix(vec3(0.004,0.010,0.020), vec3(0.014,0.036,0.062), exp(-dot(uv,uv)*0.9));
+  float b=dot(ro,rd);
+  float rmin2 = dot(ro,ro)-b*b;
+  /* volumetric electron cloud */
+  float R=2.6;
+  float disc = b*b-(dot(ro,ro)-R*R);
+  if(disc>0.){
+    float t0=max(0., -b-sqrt(disc));
+    float t1=-b+sqrt(disc);
+    float st=(t1-t0)/28.;
+    float tp=t0 + st*hash12(uv*911.7)*0.9;
+    vec3 acc=vec3(0.);
+    for(int i=0;i<28;i++){
+      vec3 p=ro+rd*tp;
+      float r=length(p);
+      float s1 = exp(-pow((r-1.45)*2.3, 2.)) * (0.40+0.60*noise3(p*2.6 + t*0.13));
+      float s2 = exp(-pow((r-0.58)*4.2, 2.)) * (0.50+0.50*noise3(p*4.4 - t*0.10));
+      acc += (vec3(0.22,0.52,0.75)*s1*0.55 + vec3(0.55,0.80,0.95)*s2*0.9) * st * 0.55;
+      tp += st;
+    }
+    col += acc;
+  }
+  /* nucleus */
+  col += vec3(1.0,0.94,0.82) * 0.0016/(0.0009+rmin2*rmin2*4.0);
+  col += vec3(0.55,0.80,0.95) * 0.010/(0.012+rmin2)*0.35;
+  /* orbiting electrons */
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    float w = t*(0.9+fi*0.37)+fi*2.1;
+    vec3 ep = vec3(cos(w),sin(w)*0.42,sin(w))*1.45;
+    ep.xy = rot(fi*1.9)*ep.xy;
+    vec3 toE = ep-ro;
+    float dproj = dot(toE,rd);
+    float d2 = dot(toE,toE)-dproj*dproj;
+    if(dproj>0.) col += vec3(0.75,0.92,1.0)*0.0011/(0.0009+d2*d2*30.0);
+  }
+  return col;
+}
+
+vec3 renderScene(int id, vec2 uv, float zm){
+  if(id==0) return scene0(uv,zm,uT);
+  if(id==1) return scene1(uv,zm,uT);
+  if(id==2) return scene2(uv,zm,uT);
+  if(id==3) return scene3(uv,zm,uT);
+  if(id==4) return scene4(uv,zm,uT);
+  if(id==5) return scene5(uv,zm,uT);
+  if(id==6) return scene6(uv,zm,uT);
+  if(id==7) return scene7(uv,zm,uT);
+  return scene8(uv,zm,uT);
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy*2.-uRes)/uRes.y;
+  float zc=clamp(uZ,0.,8.0);
+  float fi=floor(min(zc,7.999));
+  float f=zc-fi;
+  const float K=6.5;
+  float zmA=pow(K,f), zmB=pow(K,f-1.);
+  int ia=int(fi+0.5);
+  vec3 c = renderScene(ia, uv, zmA);
+  float alpha=smoothstep(0.60,0.965,f);
+  if(alpha>0.002){
+    vec3 cb=renderScene(ia+1, uv, zmB);
+    c=mix(c,cb,alpha);
+  }
+  c=aces(c*1.25);
+  c*=1.-0.34*pow(length(uv*vec2(0.82,1.)),2.3);
+  c+= (hash12(gl_FragCoord.xy+fract(uT)*7.1)-0.5)*0.014;
+  gl_FragColor=vec4(c,1.);
+}
+`;
+
+/* ---------------- GL boot ---------------- */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias:false, alpha:false, powerPreference:'high-performance' });
+const errs = [];
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    const log = gl.getShaderInfoLog(s);
+    errs.push(log); console.error('shader:', log);
+  }
+  return s;
+}
+
+let prog=null, uRes, uT, uZ;
+if(!gl){
+  document.getElementById('nogl').style.display='grid';
+} else {
+  prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+    const log = gl.getProgramInfoLog(prog);
+    errs.push(log); console.error('link:', log);
+  }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const aP = gl.getAttribLocation(prog, 'aP');
+  gl.enableVertexAttribArray(aP);
+  gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+  uRes = gl.getUniformLocation(prog,'uRes');
+  uT   = gl.getUniformLocation(prog,'uT');
+  uZ   = gl.getUniformLocation(prog,'uZ');
+}
+
+function resize(){
+  if(!gl) return;
+  const dpr = Math.min(window.devicePixelRatio||1, 1.5);
+  const w = Math.round(innerWidth*dpr), h = Math.round(innerHeight*dpr);
+  if(canvas.width!==w || canvas.height!==h){
+    canvas.width=w; canvas.height=h;
+    gl.viewport(0,0,w,h);
+  }
+}
+addEventListener('resize', resize); resize();
+
+/* ---------------- state & HUD ---------------- */
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let z=0, zt=0, playing=!reduced, done=false, lastFrame=0;
+
+const $ = id => document.getElementById(id);
+const magEl=$('mag'), depthEl=$('depth'), fieldEl=$('field'),
+      numEl=$('lvlnum'), nameEl=$('lvlname'), descEl=$('lvldesc'),
+      fillEl=$('fill'), cursorEl=$('cursor'), rail=$('rail'),
+      playBtn=$('play'), hint=$('hint');
+
+/* build ticks */
+const ticks=[];
+for(let i=0;i<9;i++){
+  const b=document.createElement('button');
+  b.className='tick';
+  b.style.left=(i/8*100)+'%';
+  b.setAttribute('aria-label','Level '+(i+1)+' — '+LEVELS[i].name);
+  b.addEventListener('click', e=>{ e.stopPropagation(); jumpTo(i); });
+  rail.appendChild(b); ticks.push(b);
+}
+
+function fmtMag(m){
+  if(m<9999.5){
+    const v = m<99.5 ? Math.round(m) : Math.round(m/10)*10;
+    return '×'+v.toLocaleString('en-US').replace(/,/g,' ');
+  }
+  const e=Math.round(Math.log10(m));
+  const sup='⁰¹²³⁴⁵⁶⁷⁸⁹';
+  const es=String(e).split('').map(d=>sup[+d]).join('');
+  return '×10'+es;
+}
+function fmtField(meters){
+  const u=[[1e-2,'cm',1e-2],[1e-3,'mm',1e-3],[1e-6,'µm',1e-6],[1e-9,'nm',1e-9],[1e-13,'pm',1e-12]];
+  for(const [lim,name,div] of u){
+    if(meters>=lim){
+      let v=meters/div;
+      const s = v>=99.5 ? Math.round(v).toString() : v>=9.95 ? Math.round(v).toString() : v.toFixed(1);
+      return s+' '+name;
+    }
+  }
+  return (meters/1e-12).toFixed(0)+' pm';
+}
+
+let shownLevel=-1, fadeTimer=null;
+function setLevelText(li){
+  if(li===shownLevel) return;
+  shownLevel=li;
+  [numEl,nameEl,descEl].forEach(el=>el.classList.add('fading'));
+  clearTimeout(fadeTimer);
+  fadeTimer=setTimeout(()=>{
+    numEl.innerHTML='0'+(li+1)+'<span> / 09</span>';
+    nameEl.textContent=LEVELS[li].name;
+    descEl.textContent=LEVELS[li].desc;
+    depthEl.textContent=(li+1)+' / 9';
+    ticks.forEach((t,i)=>t.classList.toggle('on', i<=li));
+    rail.setAttribute('aria-valuenow', li+1);
+    [numEl,nameEl,descEl].forEach(el=>el.classList.remove('fading'));
+  }, reduced?0:280);
+}
+
+function updateHUD(){
+  const mag=Math.pow(10, z*TOTAL_DECADES/ZMAX);
+  magEl.textContent=fmtMag(mag);
+  fieldEl.textContent=fmtField(0.1/mag);
+  const pct=(z/ZMAX*100);
+  fillEl.style.width=pct+'%';
+  cursorEl.style.left=pct+'%';
+  setLevelText(Math.min(8, Math.floor(z+0.2)));
+}
+
+function setPlaying(p){
+  playing=p;
+  playBtn.textContent = playing ? '❚❚' : (done ? '↺' : '▶');
+  playBtn.setAttribute('aria-label', playing ? 'Pause' : (done?'Replay':'Play'));
+}
+function jumpTo(level){
+  done=false;
+  zt=Math.max(0, Math.min(ZMAX, level));
+  setPlaying(false);
+}
+playBtn.addEventListener('click', ()=>{
+  if(done){ z=0; zt=0; done=false; setPlaying(true); return; }
+  setPlaying(!playing);
+});
+
+/* scrub */
+let dragging=false;
+function railZ(e){
+  const r=rail.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (e.clientX-r.left)/r.width))*ZMAX;
+}
+rail.addEventListener('pointerdown', e=>{
+  dragging=true; rail.setPointerCapture(e.pointerId);
+  done=false; setPlaying(false); zt=railZ(e);
+});
+rail.addEventListener('pointermove', e=>{ if(dragging) zt=railZ(e); });
+rail.addEventListener('pointerup',   ()=>{ dragging=false; });
+rail.addEventListener('keydown', e=>{
+  if(e.key==='ArrowRight'){ jumpTo(Math.min(8, Math.floor(zt+0.001)+1)); e.preventDefault(); }
+  if(e.key==='ArrowLeft'){ jumpTo(Math.max(0, Math.ceil(zt-0.001)-1)); e.preventDefault(); }
+});
+addEventListener('keydown', e=>{
+  if(e.target===rail) return;
+  if(e.code==='Space'){ e.preventDefault(); playBtn.click(); }
+  if(e.key==='ArrowRight') jumpTo(Math.min(8, Math.floor(zt+0.001)+1));
+  if(e.key==='ArrowLeft')  jumpTo(Math.max(0, Math.ceil(zt-0.001)-1));
+});
+
+setTimeout(()=>hint.classList.add('gone'), reduced?2000:8000);
+if(reduced){ hint.innerHTML='<b>space</b> begin the descent'; hint.classList.remove('gone'); }
+
+/* ---------------- loop ---------------- */
+function frame(now){
+  requestAnimationFrame(frame);
+  if(!gl || !prog) return;
+  const t=now/1000;
+  const dt=Math.min(0.05, t-(lastFrame||t)); lastFrame=t;
+  if(playing){
+    zt=Math.min(ZMAX, zt+dt*RATE);
+    if(zt>=ZMAX-1e-4 && !done){ done=true; setPlaying(false); }
+  }
+  z += (zt-z)*Math.min(1, dt*(dragging?10:2.4));
+  if(Math.abs(zt-z)<1e-4) z=zt;
+  resize();
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uT, t);
+  gl.uniform1f(uZ, z);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  updateHUD();
+}
+updateHUD();
+requestAnimationFrame(frame);
+
+/* debug hook for automated capture */
+window.__ice = {
+  setZ(v){ z=zt=v; done=v>=ZMAX; setPlaying(false); },
+  errors: errs,
+};
+</script>
